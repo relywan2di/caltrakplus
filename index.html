@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Nutrition Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --text: #f9f9f9;
+      --accent: #ffffff;
+      --warn: #ff3c3c;
+      --near: #ffcc00;
+      --card: #111;
+      --border: #333;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+
+    h1, h2 {
+      font-weight: 700;
+      margin-bottom: 20px;
+      color: var(--accent);
+    }
+
+    .tracker {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 30px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #000;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .summary {
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    .progress {
+      height: 10px;
+      background: #222;
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    #warningMsg {
+      font-weight: bold;
+      color: var(--warn);
+    }
+
+    .result-entry {
+      background: #1a1a1a;
+      border-left: 4px solid var(--accent);
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+
+    .log-day {
+      margin-top: 20px;
+      padding: 14px;
+      background-color: #1a1a1a;
+      border-radius: 10px;
+      border-left: 4px solid var(--accent);
+    }
+
+    .log-day h3 {
+      margin-bottom: 6px;
+      color: var(--accent);
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .kcal, .protein {
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .time {
+      font-size: 12px;
+      color: #ccc;
+    }
+    
+    .export-btn {
+      background: #4CAF50;
+      margin-top: 15px;
+    }
+    
+    .clear-options {
+      display: none;
+      margin-top: 10px;
+      background: #222;
+      padding: 10px;
+      border-radius: 8px;
+    }
+    
+    .clear-options button {
+      margin-bottom: 5px;
+      background: #ff3c3c;
+    }
+    
+    .clear-options button:last-child {
+      margin-bottom: 0;
+      background: #666;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="tracker">
+    <h1>Nutrition Tracker</h1>
+    <input type="text" id="foodInput" placeholder="e.g., 1 banana, 2 boiled eggs" />
+    <button onclick="addFood()">Add Food</button>
+
+    <div class="button-row">
+      <button onclick="undoLast()">Undo</button>
+      <button onclick="showClearOptions()">Clear</button>
+    </div>
+    
+    <div id="clearOptions" class="clear-options">
+      <button onclick="clearToday()">Clear Today's Log</button>
+      <button onclick="clearAllHistory()">Clear All History</button>
+      <button onclick="hideClearOptions()">Cancel</button>
+    </div>
+
+    <div class="summary">
+      <div><strong>Calories:</strong> <span id="totalCalories">0</span> / 1800 kcal</div>
+      <div class="progress"><div class="progress-bar" id="calBar"></div></div>
+      <div><strong>Protein:</strong> <span id="totalProtein">0</span> / 202 g</div>
+      <div class="progress"><div class="progress-bar" id="proteinBar"></div></div>
+      <div id="warningMsg"></div>
+    </div>
+
+    <div id="results"></div>
+    
+    <button class="export-btn" onclick="exportToCSV()">Export to CSV</button>
+  </div>
+
+  <div class="tracker">
+    <h2>Log History</h2>
+    <div id="historyViewer"></div>
+    <button class="export-btn" onclick="exportAllToCSV()">Export All Data to CSV</button>
+  </div>
+
+  <script>
+    const MAX_CALORIES = 1800;
+    const PROTEIN_GOAL = 202;
+    const TODAY = new Date().toLocaleDateString();
+
+    const config = {
+      appId: "9dcb245e",
+      appKey: "1d8023cc72f47ae688eb683a36815a9f",
+      endpoint: "https://trackapi.nutritionix.com/v2/natural/nutrients"
+    };
+
+    const calorie_db = {
+      "milk": { cal: 122, protein: 8 },
+      "boiled egg": { cal: 80, protein: 6 },
+      "egg": { cal: 80, protein: 6 },
+      "meat": { cal: 150, protein: 14 },
+      "seafood": { cal: 160, protein: 16 },
+      "bread": { cal: 75, protein: 8 },
+      "corn": { cal: 140, protein: 16 },
+      "rice": { cal: 200, protein: 5 },
+      "dry bean": { cal: 240, protein: 16 },
+      "nuts": { cal: 600, protein: 20 },
+      "fruits and vegetables": { cal: 60, protein: 1 },
+      "pizza": { cal: 285, protein: 12 },
+      "hamburger": { cal: 250, protein: 20 },
+      "century tuna": { cal: 110, protein: 16 },
+      "black coffee w/o sugar": { cal: 2, protein: 0 },
+      "banana": { cal: 89, protein: 1 }
+    };
+
+    let log = [];
+    let totalCalories = 0;
+    let totalProtein = 0;
+    let lastAdded = null;
+
+    function getTime() {
+      return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    async function fetchCalories(query) {
+      try {
+        const res = await fetch(config.endpoint, {
+          method: "POST",
+          headers: {
+            "x-app-id": config.appId,
+            "x-app-key": config.appKey,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ query })
+        });
+
+        const data = await res.json();
+        return {
+          cal: data.foods?.[0]?.nf_calories ?? null,
+          protein: data.foods?.[0]?.nf_protein ?? null
+        };
+      } catch (e) {
+        console.error("API error:", e);
+        return { cal: null, protein: null };
+      }
+    }
+
+    async function estimateNutrients(item) {
+      const cleaned = item.toLowerCase();
+      if (calorie_db[cleaned]) return calorie_db[cleaned];
+
+      const apiData = await fetchCalories(cleaned);
+      if (apiData.cal !== null && apiData.protein !== null) return apiData;
+
+      // Fallback if API fails
+      return { cal: 100, protein: 1 };
+    }
+
+    async function addFood() {
+      const input = document.getElementById("foodInput");
+      const name = input.value.trim();
+      if (!name) return;
+
+      const { cal, protein } = await estimateNutrients(name);
+      const time = getTime();
+      const entry = { name, cal: Math.round(cal), protein: Math.round(protein), time };
+
+      totalCalories += entry.cal;
+      totalProtein += entry.protein;
+      log.push(entry);
+      lastAdded = entry;
+
+      saveToStorage();
+      updateDisplay();
+      input.value = "";
+    }
+
+    function undoLast() {
+      if (!lastAdded) return;
+      totalCalories -= lastAdded.cal;
+      totalProtein -= lastAdded.protein;
+      log = log.filter(e => e !== lastAdded);
+      lastAdded = null;
+      saveToStorage();
+      updateDisplay();
+    }
+
+    function showClearOptions() {
+      document.getElementById('clearOptions').style.display = 'block';
+    }
+    
+    function hideClearOptions() {
+      document.getElementById('clearOptions').style.display = 'none';
+    }
+    
+    function clearToday() {
+      if (confirm("Are you sure you want to clear today's log?")) {
+        log = [];
+        totalCalories = 0;
+        totalProtein = 0;
+        lastAdded = null;
+        saveToStorage();
+        updateDisplay();
+        hideClearOptions();
+      }
+    }
+    
+    function clearAllHistory() {
+      if (confirm("Are you sure you want to delete ALL nutrition history? This cannot be undone.")) {
+        // Clear today's data first
+        log = [];
+        totalCalories = 0;
+        totalProtein = 0;
+        lastAdded = null;
+        
+        // Clear all historical data from localStorage
+        for (let key in localStorage) {
+          if (key.startsWith("nutritionTracker")) {
+            localStorage.removeItem(key);
+          }
+        }
+        
+        saveToStorage();
+        updateDisplay();
+        hideClearOptions();
+      }
+    }
+
+    function updateDisplay() {
+      document.getElementById("totalCalories").innerText = totalCalories;
+      document.getElementById("totalProtein").innerText = totalProtein;
+      document.getElementById("calBar").style.width = `${Math.min(100, (totalCalories / MAX_CALORIES) * 100)}%`;
+      document.getElementById("proteinBar").style.width = `${Math.min(100, (totalProtein / PROTEIN_GOAL) * 100)}%`;
+
+      const warningBox = document.getElementById("warningMsg");
+      if (totalCalories >= MAX_CALORIES || totalProtein >= PROTEIN_GOAL) {
+        warningBox.innerText = `⚠️ Limit exceeded — ${totalCalories} kcal / ${totalProtein}g protein`;
+      } else if (totalCalories >= MAX_CALORIES * 0.9 || totalProtein >= PROTEIN_GOAL * 0.9) {
+        warningBox.innerText = `Approaching daily limit`;
+      } else {
+        warningBox.innerText = "";
+      }
+
+      const results = document.getElementById("results");
+      results.innerHTML = "";
+      for (let entry of log.slice().reverse()) {
+        const div = document.createElement("div");
+        div.className = "result-entry";
+        div.innerHTML = `${entry.name} — <span class="kcal">${entry.cal} kcal</span>, <span class="protein">${entry.protein}g protein</span><div class="time">${entry.time}</div>`;
+        results.appendChild(div);
+      }
+
+      loadHistoryViewer();
+    }
+
+    function saveToStorage() {
+      const key = `nutritionTracker-${TODAY}`;
+      const data = { date: TODAY, log, totalCalories, totalProtein };
+      localStorage.setItem(key, JSON.stringify(data));
+    }
+
+    function loadFromStorage() {
+      const key = `nutritionTracker-${TODAY}`;
+      const saved = JSON.parse(localStorage.getItem(key));
+      if (saved) {
+        log = saved.log || [];
+        totalCalories = saved.totalCalories || 0;
+        totalProtein = saved.totalProtein || 0;
+      } else {
+        log = [];
+        totalCalories = 0;
+        totalProtein = 0;
+      }
+      updateDisplay();
+    }
+
+    function loadHistoryViewer() {
+      const viewer = document.getElementById("historyViewer");
+      viewer.innerHTML = "";
+
+      for (let key in localStorage) {
+        if (key.startsWith("nutritionTracker")) {
+          try {
+            const entry = JSON.parse(localStorage.getItem(key));
+            if (!entry || !entry.date || !entry.log) continue;
+
+            const dayDiv = document.createElement("div");
+            dayDiv.className = "log-day";
+
+            const title = document.createElement("h3");
+            title.textContent = `${entry.date} — ${entry.totalCalories} kcal, ${entry.totalProtein}g protein`;
+            dayDiv.appendChild(title);
+
+            for (let item of entry.log) {
+              const detail = document.createElement("div");
+              detail.innerHTML = `${item.time} — ${item.name} (<span class='kcal'>${item.cal} kcal</span>, <span class='protein'>${item.protein}g</span>)`;
+              dayDiv.appendChild(detail);
+            }
+
+            viewer.appendChild(dayDiv);
+          } catch {}
+        }
+      }
+    }
+
+    function exportToCSV() {
+      if (log.length === 0) {
+        alert("No data to export!");
+        return;
+      }
+      
+      let csvContent = "Date,Time,Food Item,Calories (kcal),Protein (g)\n";
+      
+      log.forEach(entry => {
+        csvContent += `${TODAY},${entry.time},"${entry.name}",${entry.cal},${entry.protein}\n`;
+      });
+      
+      // Add summary row
+      csvContent += `\n,TOTAL,,${totalCalories},${totalProtein}\n`;
+      csvContent += `,GOAL,,${MAX_CALORIES},${PROTEIN_GOAL}\n`;
+      
+      downloadCSV(csvContent, `nutrition-tracker-${TODAY.replace(/\//g, '-')}.csv`);
+    }
+
+    function exportAllToCSV() {
+      let allEntries = [];
+      
+      // Collect all data from localStorage
+      for (let key in localStorage) {
+        if (key.startsWith("nutritionTracker")) {
+          try {
+            const entry = JSON.parse(localStorage.getItem(key));
+            if (entry && entry.date && entry.log) {
+              allEntries.push(entry);
+            }
+          } catch {}
+        }
+      }
+      
+      if (allEntries.length === 0) {
+        alert("No historical data to export!");
+        return;
+      }
+      
+      // Sort by date (newest first)
+      allEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
+      
+      let csvContent = "Date,Time,Food Item,Calories (kcal),Protein (g)\n";
+      
+      allEntries.forEach(day => {
+        day.log.forEach(entry => {
+          csvContent += `${day.date},${entry.time},"${entry.name}",${entry.cal},${entry.protein}\n`;
+        });
+        
+        // Add daily totals
+        csvContent += `${day.date},TOTAL,,${day.totalCalories},${day.totalProtein}\n\n`;
+      });
+      
+      downloadCSV(csvContent, "nutrition-tracker-full-history.csv");
+    }
+
+    function downloadCSV(content, filename) {
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      link.style.visibility = 'hidden';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    loadFromStorage();
+  </script>
+</body>
+</html>
